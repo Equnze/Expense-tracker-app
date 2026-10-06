@@ -4,6 +4,16 @@ A simple, offline personal expense tracker for Windows. It runs as a single
 `ExpenseTracker.exe` — no internet connection, no account and no installer.
 Everything you enter stays on your computer.
 
+## Screenshots
+
+**Expenses** — quick-add form, filters and the expense list.
+
+![Expenses tab](docs/screenshots/expenses.png)
+
+**Dashboard** — monthly summary, category breakdown and charts.
+
+![Dashboard tab](docs/screenshots/dashboard.png)
+
 **Status:** Phases 1 and 2 of [the spec](expense-tracker-spec.md) are complete.
 Income tracking, tags, backup/restore, themes and the PIN lock come in Phase 3.
 
