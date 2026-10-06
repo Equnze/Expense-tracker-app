@@ -20,6 +20,7 @@ from expense_tracker.ui.expense_form import QuickAddForm
 from expense_tracker.ui.expense_table import ExpenseTableView
 from expense_tracker.ui.filter_bar import FilterBar
 from expense_tracker.ui.style import INPUT_HEIGHT
+from expense_tracker.ui.toast import NEAR, OVER
 
 
 def _count_label(count: int) -> str:
@@ -135,6 +136,12 @@ class ExpensesTab(QWidget):
         if expense.id not in self._visible_ids:
             message += " (hidden by the current filters)"
         self._ctx.status_message.emit(message)
+        for alert in self._ctx.budget_service.alerts_for(expense):
+            self._ctx.notification.emit(
+                "Budget alert",
+                alert.message(self._ctx.money),
+                OVER if alert.is_over else NEAR,
+            )
 
     def _update_buttons(self) -> None:
         self.delete_button.setEnabled(bool(self.table.selected_ids()))

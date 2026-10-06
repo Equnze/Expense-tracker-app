@@ -36,11 +36,12 @@ def add(window, amount, description="", day=None):
 # --- quick add ------------------------------------------------------------
 
 
-def test_window_opens_with_three_tabs_and_amount_focused(window):
+def test_window_opens_with_all_tabs(window):
     tabs = window.tabs
     assert [tabs.tabText(i) for i in range(tabs.count())] == [
         "Expenses",
         "Dashboard",
+        "Budgets",
         "Settings",
     ]
     assert window.minimumWidth() == 1000 and window.minimumHeight() == 650

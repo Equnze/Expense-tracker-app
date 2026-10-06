@@ -7,10 +7,12 @@ import sqlite3
 from PySide6.QtCore import QObject, Signal
 
 from expense_tracker.db.repositories import (
+    BudgetRepository,
     CategoryRepository,
     ExpenseRepository,
     SettingsRepository,
 )
+from expense_tracker.services.budgets import BudgetService
 from expense_tracker.services.categories import CategoryService
 from expense_tracker.services.expenses import ExpenseService
 from expense_tracker.utils.money import format_cents
@@ -25,6 +27,8 @@ class AppContext(QObject):
     categories_changed = Signal()
     settings_changed = Signal()
     status_message = Signal(str)
+    # Title, message and level (see ui.toast) for a non-blocking notification.
+    notification = Signal(str, str, str)
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         super().__init__()
@@ -34,6 +38,9 @@ class AppContext(QObject):
         self.expenses = ExpenseRepository(conn)
         self.expense_service = ExpenseService(self.expenses, self.settings)
         self.category_service = CategoryService(conn, self.categories, self.expenses)
+        self.budget_service = BudgetService(
+            BudgetRepository(conn), self.categories, self.expenses
+        )
 
     @property
     def currency(self) -> str:

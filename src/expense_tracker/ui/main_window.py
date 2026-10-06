@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QByteArray
-from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QCloseEvent, QKeySequence, QResizeEvent, QShortcut
 from PySide6.QtWidgets import QMainWindow, QTabWidget
 
+from expense_tracker.ui.budgets_tab import BudgetsTab
 from expense_tracker.ui.context import AppContext
 from expense_tracker.ui.dashboard_tab import DashboardTab
 from expense_tracker.ui.expenses_tab import ExpensesTab
 from expense_tracker.ui.settings_tab import SettingsTab
+from expense_tracker.ui.toast import Toast
 
 GEOMETRY_KEY = "window_geometry"
 TAB_KEY = "last_tab"
@@ -26,11 +28,13 @@ class MainWindow(QMainWindow):
 
         self.expenses_tab = ExpensesTab(ctx)
         self.dashboard_tab = DashboardTab(ctx)
+        self.budgets_tab = BudgetsTab(ctx)
         self.settings_tab = SettingsTab(ctx)
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         self.tabs.addTab(self.expenses_tab, "Expenses")
         self.tabs.addTab(self.dashboard_tab, "Dashboard")
+        self.tabs.addTab(self.budgets_tab, "Budgets")
         self.tabs.addTab(self.settings_tab, "Settings")
         self.setCentralWidget(self.tabs)
 
@@ -38,6 +42,9 @@ class MainWindow(QMainWindow):
         ctx.status_message.connect(
             lambda text: self.statusBar().showMessage(text, STATUS_TIMEOUT_MS)
         )
+
+        self.toast = Toast(self)
+        ctx.notification.connect(self.toast.show_message)
 
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self.focus_new_expense)
         QShortcut(QKeySequence("Ctrl+Z"), self, activated=self._undo_delete)
@@ -58,12 +65,17 @@ class MainWindow(QMainWindow):
         geometry = self._ctx.settings.get(GEOMETRY_KEY)
         if geometry:
             self.restoreGeometry(QByteArray.fromBase64(geometry.encode("ascii")))
-        tab = self._ctx.settings.get(TAB_KEY, "0")
-        if tab.isdigit() and int(tab) < self.tabs.count():
-            self.tabs.setCurrentIndex(int(tab))
+        last_tab = self._ctx.settings.get(TAB_KEY, "")
+        for index in range(self.tabs.count()):
+            if self.tabs.tabText(index) == last_tab:
+                self.tabs.setCurrentIndex(index)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self.toast.set_bottom_offset(self.statusBar().height())
 
     def closeEvent(self, event: QCloseEvent) -> None:
         geometry = bytes(self.saveGeometry().toBase64().data()).decode("ascii")
         self._ctx.settings.set(GEOMETRY_KEY, geometry)
-        self._ctx.settings.set(TAB_KEY, str(self.tabs.currentIndex()))
+        self._ctx.settings.set(TAB_KEY, self.tabs.tabText(self.tabs.currentIndex()))
         super().closeEvent(event)

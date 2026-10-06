@@ -13,6 +13,7 @@ BORDER = "#DFE3E8"
 WINDOW = "#F4F6F8"
 SURFACE = "#FFFFFF"
 DANGER = "#D92D20"
+WARNING = "#F59E0B"
 SUCCESS = "#1E8E3E"
 
 INPUT_HEIGHT = 32
@@ -107,6 +108,36 @@ QListWidget::item {{ padding: 6px 8px; border: none; }}
 QListWidget::item:selected {{ background: #DCE8FD; color: {TEXT}; }}
 
 QToolButton#monthButton {{ font-size: 15pt; padding-bottom: 4px; }}
+
+QLabel#budgetName {{ font-size: 11pt; font-weight: 600; }}
+QLabel#budgetPercent {{ color: {MUTED}; font-weight: 600; }}
+QProgressBar {{
+    background: #E9EDF2;
+    border: none;
+    border-radius: 5px;
+}}
+QProgressBar::chunk {{ border-radius: 5px; background: {SUCCESS}; }}
+QProgressBar[level="warning"]::chunk {{ background: {WARNING}; }}
+QProgressBar[level="over"]::chunk {{ background: {DANGER}; }}
+
+QScrollArea {{ background: transparent; }}
+
+QFrame#toast {{
+    background: #1F2937;
+    border-radius: 8px;
+    border-left: 5px solid {ACCENT};
+}}
+QFrame#toast[level="near"] {{ border-left: 5px solid {WARNING}; }}
+QFrame#toast[level="over"] {{ border-left: 5px solid {DANGER}; }}
+QLabel#toastTitle {{ color: #FFFFFF; font-weight: 600; }}
+QLabel#toastBody {{ color: #E5E7EB; }}
+QToolButton#toastClose {{
+    color: #CBD5E1;
+    background: transparent;
+    border: none;
+    padding: 2px 4px;
+}}
+QToolButton#toastClose:hover {{ color: #FFFFFF; }}
 
 QStatusBar {{ color: {MUTED}; border-top: 1px solid {BORDER}; }}
 """
