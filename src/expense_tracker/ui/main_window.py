@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from PySide6.QtCore import QByteArray
 from PySide6.QtGui import QCloseEvent, QKeySequence, QResizeEvent, QShortcut
 from PySide6.QtWidgets import QMainWindow, QTabWidget
@@ -10,8 +12,9 @@ from expense_tracker.ui.budgets_tab import BudgetsTab
 from expense_tracker.ui.context import AppContext
 from expense_tracker.ui.dashboard_tab import DashboardTab
 from expense_tracker.ui.expenses_tab import ExpensesTab
+from expense_tracker.ui.recurring_tab import RecurringTab, generated_message
 from expense_tracker.ui.settings_tab import SettingsTab
-from expense_tracker.ui.toast import Toast
+from expense_tracker.ui.toast import INFO, Toast
 
 GEOMETRY_KEY = "window_geometry"
 TAB_KEY = "last_tab"
@@ -29,12 +32,14 @@ class MainWindow(QMainWindow):
         self.expenses_tab = ExpensesTab(ctx)
         self.dashboard_tab = DashboardTab(ctx)
         self.budgets_tab = BudgetsTab(ctx)
+        self.recurring_tab = RecurringTab(ctx)
         self.settings_tab = SettingsTab(ctx)
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         self.tabs.addTab(self.expenses_tab, "Expenses")
         self.tabs.addTab(self.dashboard_tab, "Dashboard")
         self.tabs.addTab(self.budgets_tab, "Budgets")
+        self.tabs.addTab(self.recurring_tab, "Recurring")
         self.tabs.addTab(self.settings_tab, "Settings")
         self.setCentralWidget(self.tabs)
 
@@ -55,6 +60,20 @@ class MainWindow(QMainWindow):
         self._restore_state()
         if self.tabs.currentWidget() is self.expenses_tab:
             self.expenses_tab.form.focus_amount()
+
+    def generate_recurring(self) -> int:
+        """Add recurring expenses that have come due since the last launch and
+        show a short notice of what was added. Returns how many were added."""
+        generated = self._ctx.recurring_service.generate_due(date.today())
+        if generated:
+            count = len(generated)
+            self._ctx.data_changed.emit()
+            self._ctx.notification.emit(
+                f"Added {count} recurring expense{'' if count == 1 else 's'}",
+                generated_message(generated, self._ctx),
+                INFO,
+            )
+        return len(generated)
 
     def focus_new_expense(self) -> None:
         self.tabs.setCurrentWidget(self.expenses_tab)

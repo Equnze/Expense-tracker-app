@@ -90,6 +90,7 @@ def run() -> int:
     log.info("Started; database at %s", paths.db_path())
     window = MainWindow(AppContext(conn))
     window.show()
+    window.generate_recurring()
     exit_code = app.exec()
     conn.close()
     return exit_code

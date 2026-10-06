@@ -106,6 +106,8 @@ class ExpenseTableModel(QAbstractTableModel):
             return color_icon(category.color) if category else None
 
         if role == Qt.ItemDataRole.ToolTipRole and column == DESCRIPTION:
+            if expense.recurring_id is not None:
+                return f"{expense.description}\n(Added by a recurring expense)".strip()
             return expense.description or None
 
         return None

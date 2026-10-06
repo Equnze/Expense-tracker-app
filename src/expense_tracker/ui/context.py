@@ -10,11 +10,13 @@ from expense_tracker.db.repositories import (
     BudgetRepository,
     CategoryRepository,
     ExpenseRepository,
+    RecurringRepository,
     SettingsRepository,
 )
 from expense_tracker.services.budgets import BudgetService
 from expense_tracker.services.categories import CategoryService
 from expense_tracker.services.expenses import ExpenseService
+from expense_tracker.services.recurring import RecurringService
 from expense_tracker.utils.money import format_cents
 
 CURRENCY_KEY = "currency_symbol"
@@ -40,6 +42,9 @@ class AppContext(QObject):
         self.category_service = CategoryService(conn, self.categories, self.expenses)
         self.budget_service = BudgetService(
             BudgetRepository(conn), self.categories, self.expenses
+        )
+        self.recurring_service = RecurringService(
+            conn, RecurringRepository(conn), self.expenses
         )
 
     @property

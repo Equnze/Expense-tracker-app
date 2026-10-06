@@ -42,6 +42,7 @@ def test_window_opens_with_all_tabs(window):
         "Expenses",
         "Dashboard",
         "Budgets",
+        "Recurring",
         "Settings",
     ]
     assert window.minimumWidth() == 1000 and window.minimumHeight() == 650
