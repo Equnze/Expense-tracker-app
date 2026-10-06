@@ -97,6 +97,7 @@ def window(ctx):
     main_window.show()
     yield main_window
     main_window.close()
+    main_window.deleteLater()
 
 
 @pytest.fixture

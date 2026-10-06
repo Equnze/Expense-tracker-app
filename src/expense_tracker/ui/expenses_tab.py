@@ -25,6 +25,7 @@ from expense_tracker.ui.expense_dialog import ExpenseDialog
 from expense_tracker.ui.expense_form import QuickAddForm
 from expense_tracker.ui.expense_table import ExpenseTableView
 from expense_tracker.ui.filter_bar import FilterBar
+from expense_tracker.ui.import_wizard import ImportWizard
 from expense_tracker.ui.style import INPUT_HEIGHT
 from expense_tracker.ui.toast import NEAR, OVER
 
@@ -57,12 +58,19 @@ class ExpensesTab(QWidget):
         self.export_button.setToolTip(
             "Save the expenses shown in the list as an Excel or CSV file"
         )
+        self.import_button = QPushButton("Import CSV…")
+        self.import_button.setToolTip("Add expenses from a bank statement CSV file")
         self.footer = QLabel("")
         self.footer.setObjectName("footerLabel")
 
         bottom = QHBoxLayout()
         bottom.setSpacing(8)
-        for button in (self.delete_button, self.undo_button, self.export_button):
+        for button in (
+            self.delete_button,
+            self.undo_button,
+            self.export_button,
+            self.import_button,
+        ):
             button.setMinimumHeight(INPUT_HEIGHT)
             bottom.addWidget(button)
         bottom.addStretch(1)
@@ -84,6 +92,7 @@ class ExpensesTab(QWidget):
         self.delete_button.clicked.connect(self.delete_selected)
         self.undo_button.clicked.connect(self.undo_delete)
         self.export_button.clicked.connect(self.export_filtered)
+        self.import_button.clicked.connect(self.import_csv)
         ctx.data_changed.connect(self.refresh)
         ctx.categories_changed.connect(self.refresh)
         ctx.settings_changed.connect(self.refresh)
@@ -107,7 +116,9 @@ class ExpensesTab(QWidget):
         if expense is None:
             return
         dialog = ExpenseDialog(self._ctx, expense, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        dialog.deleteLater()
+        if accepted:
             self._ctx.expense_service.update(dialog.expense)
             self._ctx.data_changed.emit()
             self._ctx.status_message.emit("Expense updated")
@@ -127,7 +138,9 @@ class ExpensesTab(QWidget):
         box.addButton(QMessageBox.StandardButton.Cancel)
         box.setDefaultButton(delete)
         box.exec()
-        if box.clickedButton() is not delete:
+        confirmed = box.clickedButton() is delete
+        box.deleteLater()
+        if not confirmed:
             return
 
         count = self._ctx.expense_service.delete(ids)
@@ -149,6 +162,15 @@ class ExpensesTab(QWidget):
             return
         self._ctx.data_changed.emit()
         self._ctx.status_message.emit(f"Restored {_count_label(count)}")
+
+    def import_csv(self) -> None:
+        """Run the CSV import wizard."""
+        wizard = ImportWizard(self._ctx, self)
+        wizard.exec()
+        imported = wizard.summary.imported
+        wizard.deleteLater()
+        if imported:
+            self._ctx.status_message.emit(f"Imported {_count_label(imported)}")
 
     def export_filtered(self) -> None:
         """Ask where to save, then export the expenses currently shown."""

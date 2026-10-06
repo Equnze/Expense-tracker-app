@@ -240,7 +240,9 @@ class BudgetsTab(QWidget):
 
     def edit_budget(self, category_id: int | None) -> None:
         dialog = BudgetDialog(self._ctx, category_id, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        dialog.deleteLater()
+        if accepted:
             self.refresh()
             self._ctx.status_message.emit("Budget saved")
 

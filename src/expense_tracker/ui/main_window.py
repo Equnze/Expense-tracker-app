@@ -43,6 +43,9 @@ class MainWindow(QMainWindow):
             lambda text: self.statusBar().showMessage(text, STATUS_TIMEOUT_MS)
         )
 
+        self.settings_tab.import_requested.connect(self.expenses_tab.import_csv)
+        self.settings_tab.export_requested.connect(self.expenses_tab.export_filtered)
+
         self.toast = Toast(self)
         ctx.notification.connect(self.toast.show_message)
 

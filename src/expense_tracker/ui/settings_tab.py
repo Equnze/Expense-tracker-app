@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
@@ -31,6 +31,9 @@ _ID_ROLE = Qt.ItemDataRole.UserRole
 
 
 class SettingsTab(QWidget):
+    import_requested = Signal()
+    export_requested = Signal()
+
     def __init__(self, ctx: AppContext) -> None:
         super().__init__()
         self._ctx = ctx
@@ -139,7 +142,9 @@ class SettingsTab(QWidget):
             lambda name, color: created.append(service.add(name, color)),
             self,
         )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        dialog.deleteLater()
+        if accepted:
             self._ctx.categories_changed.emit()
             self._select(created[0].id)
             self._ctx.status_message.emit(f"Added category “{created[0].name}”")
@@ -157,7 +162,9 @@ class SettingsTab(QWidget):
             ),
             self,
         )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        dialog.deleteLater()
+        if accepted:
             self._ctx.categories_changed.emit()
             self._ctx.status_message.emit("Category updated")
 
@@ -175,7 +182,10 @@ class SettingsTab(QWidget):
         if category is None:
             return
         service = self._ctx.category_service
-        if self._ctx.categories.expense_count(category.id) == 0:
+        in_use = self._ctx.categories.expense_count(
+            category.id
+        ) or self._ctx.categories.recurring_count(category.id)
+        if not in_use:
             answer = QMessageBox.question(
                 self,
                 "Delete category",
@@ -199,9 +209,11 @@ class SettingsTab(QWidget):
             if other.id != category.id and not other.is_archived
         ]
         dialog = CategoryInUseDialog(error, others, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
         target_id = dialog.reassign_target_id
+        dialog.deleteLater()
+        if not accepted:
+            return
         if target_id is None:
             self._ctx.category_service.set_archived(category.id, True)
             message = f"Archived “{category.name}”"
@@ -271,6 +283,29 @@ class SettingsTab(QWidget):
         layout.addWidget(data_title)
         layout.addWidget(data_hint)
         layout.addWidget(open_button, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addSpacing(14)
+
+        transfer_title = QLabel("Import and export")
+        transfer_title.setObjectName("sectionTitle")
+        transfer_hint = QLabel(
+            "Import expenses from a bank statement CSV file, or export the "
+            "expenses currently shown on the Expenses tab to Excel or CSV."
+        )
+        transfer_hint.setObjectName("hintLabel")
+        transfer_hint.setWordWrap(True)
+        self.import_button = QPushButton("Import from CSV…")
+        self.export_button = QPushButton("Export expenses…")
+        transfer_buttons = QHBoxLayout()
+        transfer_buttons.setSpacing(8)
+        for button in (self.import_button, self.export_button):
+            button.setMinimumHeight(INPUT_HEIGHT)
+            transfer_buttons.addWidget(button)
+        transfer_buttons.addStretch(1)
+        self.import_button.clicked.connect(self.import_requested)
+        self.export_button.clicked.connect(self.export_requested)
+        layout.addWidget(transfer_title)
+        layout.addWidget(transfer_hint)
+        layout.addLayout(transfer_buttons)
         layout.addStretch(1)
         return panel
 
