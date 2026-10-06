@@ -83,3 +83,38 @@ def month_summary(
             )
         )
     return summary
+
+
+def monthly_totals(
+    expenses: ExpenseRepository, year: int, month: int, months: int = 12
+) -> list[tuple[int, int, int]]:
+    """Return (year, month, total_cents) for the ``months`` months ending at the
+    given one, oldest first. Months with no spending are included as zero."""
+    first_year, first_month = shift_month(year, month, -(months - 1))
+    start, _ = month_bounds(first_year, first_month)
+    _, end = month_bounds(year, month)
+    totals = expenses.totals_by_month(start, end)
+    result = []
+    for offset in range(months):
+        key = shift_month(first_year, first_month, offset)
+        result.append((*key, totals.get(key, 0)))
+    return result
+
+
+def cumulative_daily(
+    expenses: ExpenseRepository, year: int, month: int, through_day: int | None = None
+) -> list[int]:
+    """Return the running total in cents for each day of a month, starting at day 1.
+
+    ``through_day`` cuts the series short, so the current month's line can stop
+    at today instead of running flat to the end of the month.
+    """
+    start, end = month_bounds(year, month)
+    by_day = expenses.totals_by_day(start, end)
+    last_day = min(through_day or end.day, end.day)
+    running = 0
+    result = []
+    for day in range(1, last_day + 1):
+        running += by_day.get(date(year, month, day), 0)
+        result.append(running)
+    return result

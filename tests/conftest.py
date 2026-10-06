@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import os
 from datetime import date
 
+# UI tests run without a visible window.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 import pytest
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from expense_tracker.db.connection import open_database
 from expense_tracker.db.repositories import (
@@ -67,3 +72,41 @@ def make_expense(expenses, categories):
         )
 
     return _make
+
+
+# --- UI fixtures ------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture
+def ctx(qapp, conn):
+    from expense_tracker.ui.context import AppContext
+
+    return AppContext(conn)
+
+
+@pytest.fixture
+def window(ctx):
+    from expense_tracker.ui.main_window import MainWindow
+
+    main_window = MainWindow(ctx)
+    main_window.show()
+    yield main_window
+    main_window.close()
+
+
+@pytest.fixture
+def statuses(ctx):
+    messages = []
+    ctx.status_message.connect(messages.append)
+    return messages
+
+
+@pytest.fixture
+def confirm(monkeypatch):
+    """Answer any QMessageBox by clicking its default button."""
+    monkeypatch.setattr(QMessageBox, "exec", lambda box: box.defaultButton().click())

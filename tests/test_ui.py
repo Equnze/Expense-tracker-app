@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from datetime import date
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QMessageBox
 
 from expense_tracker.models import ExpenseFilter
 from expense_tracker.services.categories import CategoryInUseError
@@ -20,37 +17,6 @@ from expense_tracker.ui.expense_dialog import ExpenseDialog
 from expense_tracker.ui.expense_table import AMOUNT, DATE
 from expense_tracker.ui.main_window import MainWindow
 from expense_tracker.utils.dates import ALL_TIME, CUSTOM, THIS_MONTH
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
-
-
-@pytest.fixture
-def ctx(qapp, conn):
-    return AppContext(conn)
-
-
-@pytest.fixture
-def window(ctx):
-    main_window = MainWindow(ctx)
-    main_window.show()
-    yield main_window
-    main_window.close()
-
-
-@pytest.fixture
-def statuses(ctx):
-    messages = []
-    ctx.status_message.connect(messages.append)
-    return messages
-
-
-@pytest.fixture
-def confirm(monkeypatch):
-    """Answer any QMessageBox by clicking its default button."""
-    monkeypatch.setattr(QMessageBox, "exec", lambda box: box.defaultButton().click())
 
 
 def table_column(window, column):

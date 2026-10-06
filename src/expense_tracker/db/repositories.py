@@ -7,7 +7,13 @@ from datetime import date
 from typing import Iterable
 
 from expense_tracker.db.connection import transaction
-from expense_tracker.models import Category, Expense, ExpenseFilter
+from expense_tracker.models import (
+    Budget,
+    Category,
+    Expense,
+    ExpenseFilter,
+    RecurringExpense,
+)
 from expense_tracker.utils.dates import now_iso
 
 
@@ -89,6 +95,12 @@ class CategoryRepository:
     def expense_count(self, category_id: int) -> int:
         return self._conn.execute(
             "SELECT COUNT(*) FROM expenses WHERE category_id = ?", (category_id,)
+        ).fetchone()[0]
+
+    def recurring_count(self, category_id: int) -> int:
+        return self._conn.execute(
+            "SELECT COUNT(*) FROM recurring_expenses WHERE category_id = ?",
+            (category_id,),
         ).fetchone()[0]
 
 
@@ -203,13 +215,17 @@ class ExpenseRepository:
         return deleted
 
     def restore(self, expenses: Iterable[Expense]) -> None:
-        """Re-insert previously deleted expenses with their original ids."""
+        """Re-insert previously deleted expenses with their original ids.
+
+        The link to a recurring rule is dropped if that rule has since been deleted.
+        """
         with transaction(self._conn):
             for expense in expenses:
                 self._conn.execute(
                     "INSERT INTO expenses (id, amount_cents, date, category_id, "
                     "description, payment_method, tags, recurring_id, created_at, "
-                    "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, "
+                    "(SELECT id FROM recurring_expenses WHERE id = ?), ?, ?)",
                     (
                         expense.id,
                         expense.amount_cents,
@@ -247,3 +263,156 @@ class ExpenseRepository:
             (start.isoformat(), end.isoformat()),
         )
         return [(row["category_id"], row["total"]) for row in rows]
+
+    def totals_by_month(self, start: date, end: date) -> dict[tuple[int, int], int]:
+        """Return total cents keyed by (year, month); empty months are absent."""
+        rows = self._conn.execute(
+            "SELECT substr(date, 1, 7) AS month, SUM(amount_cents) AS total "
+            "FROM expenses WHERE date >= ? AND date <= ? GROUP BY month",
+            (start.isoformat(), end.isoformat()),
+        )
+        return {
+            (int(row["month"][:4]), int(row["month"][5:7])): row["total"]
+            for row in rows
+        }
+
+    def totals_by_day(self, start: date, end: date) -> dict[date, int]:
+        """Return total cents keyed by day; days with no spending are absent."""
+        rows = self._conn.execute(
+            "SELECT date, SUM(amount_cents) AS total FROM expenses "
+            "WHERE date >= ? AND date <= ? GROUP BY date",
+            (start.isoformat(), end.isoformat()),
+        )
+        return {date.fromisoformat(row["date"]): row["total"] for row in rows}
+
+    def duplicate_keys(self) -> set[tuple]:
+        """Return one :func:`duplicate_key` per stored expense, for import checks."""
+        rows = self._conn.execute("SELECT date, amount_cents, description FROM expenses")
+        return {
+            duplicate_key(
+                date.fromisoformat(row["date"]), row["amount_cents"], row["description"]
+            )
+            for row in rows
+        }
+
+
+def duplicate_key(day: date, amount_cents: int, description: str | None) -> tuple:
+    """Two expenses are likely duplicates when their keys are equal."""
+    return day, amount_cents, " ".join((description or "").split()).casefold()
+
+
+class BudgetRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    @staticmethod
+    def _from_row(row: sqlite3.Row) -> Budget:
+        return Budget(
+            id=row["id"],
+            category_id=row["category_id"],
+            monthly_limit_cents=row["monthly_limit_cents"],
+        )
+
+    def list(self) -> list[Budget]:
+        rows = self._conn.execute("SELECT * FROM budgets ORDER BY id")
+        return [self._from_row(row) for row in rows]
+
+    def get(self, category_id: int | None) -> Budget | None:
+        row = self._conn.execute(
+            "SELECT * FROM budgets WHERE category_id IS ? ORDER BY id LIMIT 1",
+            (category_id,),
+        ).fetchone()
+        return self._from_row(row) if row else None
+
+    def set(self, category_id: int | None, monthly_limit_cents: int) -> None:
+        """Create or replace the budget for a category (None = overall)."""
+        with transaction(self._conn):
+            self.delete(category_id)
+            self._conn.execute(
+                "INSERT INTO budgets (category_id, monthly_limit_cents) VALUES (?, ?)",
+                (category_id, monthly_limit_cents),
+            )
+
+    def delete(self, category_id: int | None) -> None:
+        self._conn.execute("DELETE FROM budgets WHERE category_id IS ?", (category_id,))
+
+
+def _optional_date(value: str | None) -> date | None:
+    return date.fromisoformat(value) if value else None
+
+
+class RecurringRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    @staticmethod
+    def _from_row(row: sqlite3.Row) -> RecurringExpense:
+        return RecurringExpense(
+            id=row["id"],
+            amount_cents=row["amount_cents"],
+            category_id=row["category_id"],
+            description=row["description"] or "",
+            payment_method=row["payment_method"] or "",
+            frequency=row["frequency"],
+            day_of_month=row["day_of_month"],
+            start_date=date.fromisoformat(row["start_date"]),
+            end_date=_optional_date(row["end_date"]),
+            last_generated_date=_optional_date(row["last_generated_date"]),
+            is_active=bool(row["is_active"]),
+        )
+
+    @staticmethod
+    def _values(rule: RecurringExpense) -> tuple:
+        return (
+            rule.amount_cents,
+            rule.category_id,
+            rule.description,
+            rule.payment_method,
+            rule.frequency,
+            rule.day_of_month,
+            rule.start_date.isoformat(),
+            rule.end_date.isoformat() if rule.end_date else None,
+            rule.last_generated_date.isoformat() if rule.last_generated_date else None,
+            int(rule.is_active),
+        )
+
+    def list(self) -> list[RecurringExpense]:
+        rows = self._conn.execute(
+            "SELECT * FROM recurring_expenses ORDER BY description COLLATE NOCASE, id"
+        )
+        return [self._from_row(row) for row in rows]
+
+    def get(self, rule_id: int) -> RecurringExpense | None:
+        row = self._conn.execute(
+            "SELECT * FROM recurring_expenses WHERE id = ?", (rule_id,)
+        ).fetchone()
+        return self._from_row(row) if row else None
+
+    def add(self, rule: RecurringExpense) -> RecurringExpense:
+        cursor = self._conn.execute(
+            "INSERT INTO recurring_expenses (amount_cents, category_id, description, "
+            "payment_method, frequency, day_of_month, start_date, end_date, "
+            "last_generated_date, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            self._values(rule),
+        )
+        rule.id = cursor.lastrowid
+        return rule
+
+    def update(self, rule: RecurringExpense) -> None:
+        self._conn.execute(
+            "UPDATE recurring_expenses SET amount_cents = ?, category_id = ?, "
+            "description = ?, payment_method = ?, frequency = ?, day_of_month = ?, "
+            "start_date = ?, end_date = ?, last_generated_date = ?, is_active = ? "
+            "WHERE id = ?",
+            (*self._values(rule), rule.id),
+        )
+
+    def delete(self, rule_id: int) -> None:
+        self._conn.execute("DELETE FROM recurring_expenses WHERE id = ?", (rule_id,))
+
+    def reassign_category(self, from_id: int, to_id: int) -> int:
+        cursor = self._conn.execute(
+            "UPDATE recurring_expenses SET category_id = ? WHERE category_id = ?",
+            (to_id, from_id),
+        )
+        return cursor.rowcount

@@ -1,7 +1,8 @@
-"""Dashboard tab: monthly summary cards and category breakdown."""
+"""Dashboard tab: monthly summary cards, charts and category breakdown."""
 
 from __future__ import annotations
 
+import calendar
 from datetime import date
 from html import escape
 
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QToolButton,
@@ -19,7 +21,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from expense_tracker.services.summary import MonthSummary, month_summary
+from expense_tracker.services.summary import (
+    MonthSummary,
+    cumulative_daily,
+    month_summary,
+    monthly_totals,
+)
+from expense_tracker.ui.charts import CategoryDonut, CumulativeLines, MonthlyBars
 from expense_tracker.ui.context import AppContext
 from expense_tracker.ui.style import DANGER, INPUT_HEIGHT, MUTED, SUCCESS
 from expense_tracker.ui.widgets import Card, color_icon
@@ -96,15 +104,44 @@ class DashboardTab(QWidget):
         self.empty_label.setObjectName("emptyLabel")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        self.donut = CategoryDonut()
+        self.bars = MonthlyBars()
+        self.lines = CumulativeLines()
+
+        breakdown_panel = QVBoxLayout()
+        breakdown_panel.setSpacing(8)
+        breakdown_panel.addWidget(breakdown_title)
+        breakdown_panel.addWidget(self.breakdown, 1)
+        breakdown_panel.addWidget(self.empty_label, 1)
+        category_row = QHBoxLayout()
+        category_row.setSpacing(12)
+        category_row.addWidget(self.donut, 2)
+        category_row.addLayout(breakdown_panel, 3)
+        trend_row = QHBoxLayout()
+        trend_row.setSpacing(12)
+        trend_row.addWidget(self.bars, 1)
+        trend_row.addWidget(self.lines, 1)
+
+        # Everything below the month selector scrolls, so the charts keep a
+        # readable size on a small window.
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 6, 0)
+        content_layout.setSpacing(12)
+        content_layout.addLayout(cards)
+        content_layout.addLayout(category_row)
+        content_layout.addLayout(trend_row)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(content)
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 12)
+        layout.setContentsMargins(16, 14, 10, 12)
         layout.setSpacing(12)
         layout.addLayout(selector)
-        layout.addLayout(cards)
-        layout.addSpacing(4)
-        layout.addWidget(breakdown_title)
-        layout.addWidget(self.breakdown, 1)
-        layout.addWidget(self.empty_label, 1)
+        layout.addWidget(scroll, 1)
 
         self.previous_button.clicked.connect(lambda: self._shift(-1))
         self.next_button.clicked.connect(lambda: self._shift(1))
@@ -135,6 +172,7 @@ class DashboardTab(QWidget):
         )
         self._show_cards(summary, today)
         self._show_breakdown(summary)
+        self._show_charts(summary, today)
 
     def _show_cards(self, summary: MonthSummary, today: date) -> None:
         money = self._ctx.money
@@ -184,6 +222,25 @@ class DashboardTab(QWidget):
             )
         else:
             self.top_card.detail.setText("No spending yet")
+
+    def _show_charts(self, summary: MonthSummary, today: date) -> None:
+        expenses, money = self._ctx.expenses, self._ctx.money
+        year, month = summary.year, summary.month
+        self.donut.set_data(summary.breakdown, money)
+        self.bars.set_data(
+            monthly_totals(expenses, year, month), self._ctx.currency, money
+        )
+        # The current month's line stops at today rather than running flat.
+        is_current = (year, month) == (today.year, today.month)
+        previous_year, previous_month = shift_month(year, month, -1)
+        self.lines.set_data(
+            cumulative_daily(expenses, year, month, today.day if is_current else None),
+            cumulative_daily(expenses, previous_year, previous_month),
+            calendar.month_name[month],
+            calendar.month_name[previous_month],
+            self._ctx.currency,
+            money,
+        )
 
     def _show_breakdown(self, summary: MonthSummary) -> None:
         has_rows = bool(summary.breakdown)
